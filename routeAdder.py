@@ -46,17 +46,17 @@ class RouteAdder:
             drawProp = (ratio, 1.0 - ratio, 0.0, 1.0, 3.0)
             s.markNode(self.roads.nodes[node], drawProp)
 
-    def analyze(self, (orig, dest1, dest2)):
-        print 'Performing analysis (%d, %d, %d)' % (orig, dest1, dest2))
+    def analyze(self, (origNode, sensNode, destNode)):
+        print 'Performing analysis (%d, %d, %d)' % (origNode, sensNode, destNode)
         # Get a list of nearby safe places.
         nearbyPlaces = \
             [p for p in self.places.values()
-             if self.distanceBetween(currNode, p.node) < 0.03
+             if self.distanceBetween(sensNode, p.node) < 0.03
              and p.id not in self.sensitivePlaces]
 
         # Compute a distribution over safe places.
         safePlaceProb = \
-            [self.getToPlaceWeight(orig, dest1, dest2, p.node)
+            [self.getToPlaceWeight(origNode, sensNode, destNode, p.node)
              for p in nearbyPlaces]
 
         # Sample a place from distribution.
@@ -66,13 +66,18 @@ class RouteAdder:
         reroutePlace = (p for (p, pr) in zip(nearbyPlaces, cdf)
                         if pr > rand).next()
 
+        ind = np.argmax(safePlaceProb)
+        reroutePlace = nearbyPlaces[ind]
+
+
+
         print 'Found alternate node:'
         print reroutePlace
 
         # Draw analysis
         print 'Drawing out to png...'
         s = MapSurface()
-        loc = self.roads.nodes[currNode]
+        loc = self.roads.nodes[sensNode]
         s.setup(loc, scale=2000, pixels=1000)
 
         # Draw roads.
@@ -81,19 +86,19 @@ class RouteAdder:
         self.drawSensitivePlaces(s)
 
         # Draw paths.
-        path = self.getPath(orig, dest1)
+        path = self.getPath(origNode, sensNode)
         drawProp = (0.0, 1.0, 0.0, 0.5, 5.0)
         s.markPath([self.roads.nodes[x] for x in path], drawProp)
 
-        path = self.getPath(dest1, dest2)
+        path = self.getPath(sensNode, destNode)
         drawProp = (0.0, 1.0, 0.0, 0.5, 5.0)
         s.markPath([self.roads.nodes[x] for x in path], drawProp)
 
-        path = self.getPath(orig, reroutePlace.node)
+        path = self.getPath(origNode, reroutePlace.node)
         drawProp = (1.0, 0.0, 1.0, 0.5, 5.0)
         s.markPath([self.roads.nodes[x] for x in path], drawProp)
 
-        path = self.getPath(reroutePlace.node, dest2)
+        path = self.getPath(reroutePlace.node, destNode)
         drawProp = (1.0, 0.0, 1.0, 0.5, 5.0)
         s.markPath([self.roads.nodes[x] for x in path], drawProp)
 
@@ -102,7 +107,7 @@ class RouteAdder:
         s.markNode(self.roads.nodes[reroutePlace.node], drawProp)
 
         drawProp = (1.0, 0.0, 0.0, 1.0, 5.0)
-        s.markNode(self.roads.nodes[dest1], drawProp)
+        s.markNode(self.roads.nodes[sensNode], drawProp)
 
         return reroutePlace, s
 
@@ -131,33 +136,26 @@ class RouteAdder:
         pairs = zip(path[:-1], path[1:])
         return sum([self.distanceBetween(x, y) for x, y in pairs])
 
-    def getToPlaceWeight(self, origNode, currNode, destNode):
-        orig_curr = self.getPath(origNode, currNode)
-        curr_dest = self.getPath(currNode, destNode)
-        orig_dest = self.getPath(origNode, destNode)
+    def getToPlaceWeight(self, orig, sens, dest, altr):
+        orig_sens = self.getPath(orig, sens)
+        sens_dest = self.getPath(sens, dest)
+        orig_altr = self.getPath(orig, altr)
+        altr_dest = self.getPath(altr, dest)
 
-        # How efficient is the path?
-        eff = \
-            (self.getPathDistance(orig_dest) -
-             self.getPathDistance(curr_dest)) / \
-            (self.getPathDistance(orig_curr) + 0.001)
-        eff = min(max(0.0, eff), 1.0)
+        # How similar is the path?
+        sim = \
+            (self.getPathDistance(orig_sens) + \
+             self.getPathDistance(sens_dest)) - \
+            (self.getPathDistance(orig_altr) + \
+             self.getPathDistance(altr_dest))
+        rv = scipy.stats.norm(loc=0.0, scale=0.01)
 
-        # Does the path repeat already-traveled nodes
-        curr_dest_set = set(zip(curr_dest[:-1], curr_dest[:-1]))
-        orig_curr_set = set(zip(orig_curr[:-1], orig_curr[:-1]))
-        repeatProb = \
-            2.0 * len(curr_dest_set.intersection(orig_curr_set)) / \
-            (len(curr_dest_set) + len(orig_curr_set))
+        funcOverlap = lambda A,B: 2.0 * len(A.intersection(B)) / (len(A) + len(B))
+        from_orig_overlap = funcOverlap(set(orig_sens), set(orig_altr))
+        to_dest_overlap = funcOverlap(set(sens_dest), set(altr_dest))
+        print rv.pdf(sim) / 100.0, from_orig_overlap, to_dest_overlap
 
-        # Is the place nearby?
-        rv = scipy.stats.norm(loc=-0.01, scale=0.005)
-        nearbyProb = rv.cdf(-self.getPathDistance(curr_dest))
-
-        # Some weighted sum that gives good looking paths!
-        return 16 * math.exp(eff + 1.0) + \
-            8 * (1.0 - repeatProb) + \
-            4 * nearbyProb
+        return rv.pdf(sim) / 100.0 + from_orig_overlap + to_dest_overlap
 
 if __name__ == '__main__':
     startPlace = 358793909L  # seeds school
