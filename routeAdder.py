@@ -46,8 +46,8 @@ class RouteAdder:
             drawProp = (ratio, 1.0 - ratio, 0.0, 1.0, 3.0)
             s.markNode(self.roads.nodes[node], drawProp)
 
-    def analyze(self, origNode, currNode):
-        print 'Performing analysis (%d, %d)' % (origNode, currNode)
+    def analyze(self, (orig, dest1, dest2)):
+        print 'Performing analysis (%d, %d, %d)' % (orig, dest1, dest2))
         # Get a list of nearby safe places.
         nearbyPlaces = \
             [p for p in self.places.values()
@@ -56,7 +56,7 @@ class RouteAdder:
 
         # Compute a distribution over safe places.
         safePlaceProb = \
-            [self.getToPlaceWeight(origNode, currNode, p.node)
+            [self.getToPlaceWeight(orig, dest1, dest2, p.node)
              for p in nearbyPlaces]
 
         # Sample a place from distribution.
@@ -80,23 +80,29 @@ class RouteAdder:
         s.markNodes(self.roads.nodes.values(), drawProp)
         self.drawSensitivePlaces(s)
 
-        # Draw path from origNode to currNode in green.
-        path = self.getPath(origNode, currNode)
+        # Draw paths.
+        path = self.getPath(orig, dest1)
         drawProp = (0.0, 1.0, 0.0, 0.5, 5.0)
         s.markPath([self.roads.nodes[x] for x in path], drawProp)
 
-        # Draw path from currNode to the sampled safe place in purple.
-        path = self.getPath(currNode, reroutePlace.node)
+        path = self.getPath(dest1, dest2)
+        drawProp = (0.0, 1.0, 0.0, 0.5, 5.0)
+        s.markPath([self.roads.nodes[x] for x in path], drawProp)
+
+        path = self.getPath(orig, reroutePlace.node)
         drawProp = (1.0, 0.0, 1.0, 0.5, 5.0)
         s.markPath([self.roads.nodes[x] for x in path], drawProp)
 
-        # Draw the sampled safe place.
+        path = self.getPath(reroutePlace.node, dest2)
+        drawProp = (1.0, 0.0, 1.0, 0.5, 5.0)
+        s.markPath([self.roads.nodes[x] for x in path], drawProp)
+
+        # Draw nodes.
         drawProp = (0.0, 1.0, 0.0, 1.0, 5.0)
         s.markNode(self.roads.nodes[reroutePlace.node], drawProp)
 
-        # Draw the currNode in blue.
         drawProp = (1.0, 0.0, 0.0, 1.0, 5.0)
-        s.markNode(self.roads.nodes[currNode], drawProp)
+        s.markNode(self.roads.nodes[dest1], drawProp)
 
         return reroutePlace, s
 
@@ -156,11 +162,11 @@ class RouteAdder:
 if __name__ == '__main__':
     startPlace = 358793909L  # seeds school
     endPlace = 358819756L  # hospital in santa monica
-    #endPlace2 = 358783700L; # emerson middle school
+    endPlace2 = 358783700L  # emerson middle school
 
     ra = RouteAdder()
     ra.init()
     startNode = ra.places[startPlace].node
     endNode = ra.places[endPlace].node
-    reroutePlace, s = ra.analyze(startNode, endNode)
+    reroutePlace, s = ra.analyze([ra.places[p].node for p in [358793909L, 358819756L, 358783700L]])
     s.writePng('data/routeAdderOutput.png')
